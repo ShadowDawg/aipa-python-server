@@ -24,9 +24,11 @@ class HierarchicalAgentRunner:
     Manages the configuration and invocation of a main agent with potential handoffs.
     Agent instances are created dynamically during each invocation.
     """
-    def __init__(self, main_agent_config: AgentConfig, handoff_configs: List[AgentConfig]):
+
+    def __init__(self, main_agent_config: AgentConfig, handoff_configs: List[AgentConfig], web_search: bool = False):
         self.main_agent_config = main_agent_config
         self.handoff_configs = handoff_configs
+        self.web_search = web_search
         # We don't store agent instances here
 
 
@@ -41,6 +43,8 @@ class HierarchicalAgentRunner:
                 handoff_agents = []
                 # Create handoff agents and their MCP servers if needed
                 for config in self.handoff_configs:
+                    if not self.web_search and config.name == "Search Agent":
+                        continue
                     mcp_servers = []
                     if config.mcp_url:
                         try:

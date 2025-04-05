@@ -5,6 +5,8 @@ from fastapi.responses import StreamingResponse # Import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from contextlib import AsyncExitStack # Import AsyncExitStack here
+import datetime
+import pytz # For timezone handling
 
 # Import necessary components from your agent class file
 # Add ItemHelpers to parse message content
@@ -14,24 +16,42 @@ from agents import Runner, trace, gen_trace_id # Import Runner, trace, gen_trace
 
 # --- Agent Configuration (Copied or adapted from myAgentClass.py) ---
 # You might want to load this from a config file or environment variables in a real app
+# Get current time in IST
+ist_timezone = pytz.timezone('Asia/Kolkata')
+current_time_ist = datetime.datetime.now(ist_timezone)
+ist_time_str = current_time_ist.strftime("%Y-%m-%d %H:%M:%S %Z")
+
 main_config = AgentConfig(
     name="Task Coordinator",
-    instructions="You are a helpful assistant. Determine if a task is for Gmail or Calendar and delegate.",
+    instructions=f"You are a helpful assistant. Current date and time in IST: {ist_time_str}. Determine if a task is for Gmail, Slack, or Calendar and delegate.",
     # model_settings=ModelSettings(tool_choice=None) # Main agent might not need tools directly
 )
 
 gmail_config = AgentConfig(
     name="Gmail Agent",
-    instructions="You are a helpful assistant that can handle gmail tasks.",
-    mcp_url="https://mcp.composio.dev/gmail/enough-miniature-terabyte-vtIXTm", # Replace with your actual URL if needed
+    instructions="You are a helpful assistant that can handle gmail tasks. Before sending an email, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the email.",
+    mcp_url="https://mcp.composio.dev/gmail/enough-miniature-terabyte-vtIXTm",
     # model_settings=ModelSettings(tool_choice="required")
 )
 
-# calendar_config = AgentConfig( # Example if you had a calendar agent
-#     name="Calendar Agent",
-#     instructions="You handle calendar scheduling and querying.",
-#     mcp_url="YOUR_CALENDAR_MCP_URL_HERE",
-# )
+slack_config = AgentConfig(
+    name="Slack Agent",
+    instructions="You are a helpful assistant that can handle slack tasks.",
+    mcp_url="https://mcp.composio.dev/slack/enough-miniature-terabyte-vtIXTm",
+    # model_settings=ModelSettings(tool_choice="required")
+)
+
+calendar_config = AgentConfig(
+    name="Calendar Agent",
+    instructions="You handle calendar scheduling and querying.",
+    mcp_url="https://mcp.composio.dev/googlecalendar/enough-miniature-terabyte-vtIXTm",
+)
+
+search_config = AgentConfig(
+    name="Search Agent",
+    instructions="You can search the web for up to date information and answer questions which require the latest information.",
+    mcp_url="https://mcp.composio.dev/perplexityai/enough-miniature-terabyte-vtIXTm",
+)
 
 # --- FastAPI App Setup ---
 app = FastAPI()
@@ -39,12 +59,13 @@ app = FastAPI()
 # Instantiate the agent runner globally - it now only holds configs
 agent_runner_configs = HierarchicalAgentRunner(
     main_agent_config=main_config,
-    handoff_configs=[gmail_config] # Add other configs like calendar_config here if you have them
+    handoff_configs=[gmail_config, slack_config, calendar_config, search_config]
 )
 
 # --- API Models ---
 class InvokeRequest(BaseModel):
     messages: List[Dict[str, Any]] # Standard message format
+    web_search: bool = False # Whether to enable web search
 
 # Define the response model for the non-streaming endpoint
 class InvokeResponse(BaseModel):
