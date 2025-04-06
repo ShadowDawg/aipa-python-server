@@ -12,7 +12,9 @@ import pytz # For timezone handling
 # Add ItemHelpers to parse message content
 from myAgentClass import AgentConfig, HierarchicalAgentRunner, ModelSettings, ItemHelpers, Agent, handoff, on_handoff_current # Add Agent, handoff, on_handoff_current
 from agents.mcp import MCPServerSse # Import MCPServerSse here
-from agents import Runner, trace, gen_trace_id # Import Runner, trace, gen_trace_id here
+from agents import Runner, trace, gen_trace_id
+
+from pytypes import calendar_output, gmail_output, notion_output, slack_output, whatsapp_output # Import Runner, trace, gen_trace_id here
 
 # --- Agent Configuration (Copied or adapted from myAgentClass.py) ---
 # You might want to load this from a config file or environment variables in a real app
@@ -23,28 +25,31 @@ ist_time_str = current_time_ist.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 main_config = AgentConfig(
     name="Task Coordinator",
-    instructions=f"You are a helpful assistant. Current date and time in IST: {ist_time_str}. Determine if a task is for Gmail, Slack, or Calendar and delegate.",
+    instructions=f"You are a helpful assistant. Current date and time in IST: {ist_time_str}. Determine if a task is for Gmail, Slack, Notion, Whatsapp or Calendar and delegate.",
     # model_settings=ModelSettings(tool_choice=None) # Main agent might not need tools directly
 )
 
 gmail_config = AgentConfig(
     name="Gmail Agent",
-    instructions="You are a helpful assistant that can handle gmail tasks. Before sending an email, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the email.",
+    instructions="You are a helpful assistant that can handle gmail tasks. 1) Before sending an email, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the email. 2) If the user would like to summarise their emails, fetch them according to the user's query and summarise them concisely before showing it to the user.",
     mcp_url="https://mcp.composio.dev/gmail/enough-miniature-terabyte-vtIXTm",
+    output_type=gmail_output,
     # model_settings=ModelSettings(tool_choice="required")
 )
 
 slack_config = AgentConfig(
     name="Slack Agent",
-    instructions="You are a helpful assistant that can handle slack tasks.",
+    instructions="You are a helpful assistant that can handle slack tasks. 1) Before sending a message, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the message.",
     mcp_url="https://mcp.composio.dev/slack/enough-miniature-terabyte-vtIXTm",
+    output_type=slack_output,
     # model_settings=ModelSettings(tool_choice="required")
 )
 
 calendar_config = AgentConfig(
     name="Calendar Agent",
-    instructions="You handle calendar scheduling and querying.",
+    instructions="You handle calendar scheduling and querying. Current date and time in IST: {ist_time_str}. All schedules should be in IST. 1) When asked to schedule an event, first confirm the date, time and attendees. If the user confirms, schedule the event.",
     mcp_url="https://mcp.composio.dev/googlecalendar/enough-miniature-terabyte-vtIXTm",
+    output_type=calendar_output,
 )
 
 search_config = AgentConfig(
@@ -53,19 +58,40 @@ search_config = AgentConfig(
     mcp_url="https://mcp.composio.dev/perplexityai/enough-miniature-terabyte-vtIXTm",
 )
 
+notion_config = AgentConfig(
+    name="Notion Agent",
+    instructions="You can create, read, update and delete notes in Notion. Be concise in your responses.",
+    mcp_url="https://mcp.composio.dev/notion/scruffy-huge-nest-ixAj3E",
+    output_type=notion_output,
+)
+
+whatsapp_config = AgentConfig(
+    name="Whatsapp Agent",
+    instructions="You can send and receive messages from whatsapp.",
+    # mcp_url="https://mcp.composio.dev/whatsapp/enough-miniature-terabyte-vtIXTm",
+    output_type=whatsapp_output,
+)
+
+apple_config = AgentConfig(
+    name="Apple Agent",
+    instructions="You can use apple services like imessage and notes.",
+    mcp_url="https://mcp.composio.dev/whatsapp/enough-miniature-terabyte-vtIXTm",
+)
+
 # --- FastAPI App Setup ---
 app = FastAPI()
 
 # Instantiate the agent runner globally - it now only holds configs
 agent_runner_configs = HierarchicalAgentRunner(
     main_agent_config=main_config,
-    handoff_configs=[gmail_config, slack_config, calendar_config, search_config]
+    # handoff_configs=[gmail_config, slack_config, calendar_config, search_config]
+    handoff_configs=[gmail_config, slack_config, calendar_config, search_config, whatsapp_config, notion_config]
 )
 
 # --- API Models ---
 class InvokeRequest(BaseModel):
     messages: List[Dict[str, Any]] # Standard message format
-    web_search: bool = False # Whether to enable web search
+    integrations: List[str] = [] # List of integrations to use
 
 # Define the response model for the non-streaming endpoint
 class InvokeResponse(BaseModel):
@@ -88,7 +114,7 @@ async def invoke_agent_standard(request: InvokeRequest):
     """
     try:
         # Use the standard invoke method (which now handles its own context)
-        result = await agent_runner_configs.invoke(request.messages) # Use the instance holding configs
+        result = await agent_runner_configs.invoke(request.messages, request.integrations) # Use the instance holding configs
         updated_messages = result.to_input_list()
         return InvokeResponse(messages=updated_messages)
     except Exception as e:
@@ -141,6 +167,7 @@ async def invoke_agent_streamed(request: InvokeRequest):
                             instructions=config.instructions,
                             mcp_servers=mcp_servers,
                             model_settings=config.model_settings,
+                            # model="o3-mini"
                         )
                         handoffObject = handoff(
                             agent=agent,
@@ -170,6 +197,7 @@ async def invoke_agent_streamed(request: InvokeRequest):
                         mcp_servers=main_agent_mcp_servers,
                         handoffs=handoff_agents,
                         model_settings=main_conf.model_settings,
+                        # model="o3-mini"
                     )
                     # --- Agent hierarchy built ---
 

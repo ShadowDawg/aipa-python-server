@@ -3,21 +3,25 @@ import asyncio
 from contextlib import AsyncExitStack # Import AsyncExitStack
 from pprint import pprint
 from agents import Agent, Handoff, ItemHelpers, RunContextWrapper, Runner, gen_trace_id, handoff, trace
-from agents.mcp import MCPServerSse
+from agents.mcp import MCPServerSse, MCPServerStdio
 from agents.model_settings import ModelSettings
 from typing import List, Optional
+from pydantic import BaseModel
+
+from pytypes import gmail_output, calendar_output
 
 def on_handoff_current(ctx: RunContextWrapper[None]):
         print("Handoff called")
 
 # A simple structure to hold agent configuration
 class AgentConfig:
-    def __init__(self, name: str, instructions: str, mcp_url: Optional[str] = None, model_settings: Optional[ModelSettings] = None):
+    def __init__(self, name: str, instructions: str, mcp_url: Optional[str] = None, model_settings: Optional[ModelSettings] = None, output_type: Optional[BaseModel] = None):
         self.name = name
         self.instructions = instructions
         self.mcp_url = mcp_url
         # Provide a default ModelSettings if none is given, adjust as needed
-        self.model_settings = model_settings or ModelSettings(tool_choice="required")
+        self.model_settings = model_settings or ModelSettings()
+        self.output_type = output_type
 
 class HierarchicalAgentRunner:
     """
@@ -32,7 +36,7 @@ class HierarchicalAgentRunner:
         # We don't store agent instances here
 
 
-    async def invoke(self, messages: List[dict]):
+    async def invoke(self, messages: List[dict], integrations: List[str]):
         """
         Creates the agent hierarchy with necessary MCP servers and runs the workflow (non-streaming).
         """
@@ -45,8 +49,43 @@ class HierarchicalAgentRunner:
                 for config in self.handoff_configs:
                     if not self.web_search and config.name == "Search Agent":
                         continue
+                    if config.name.split(" ")[0] not in integrations:
+                        print(f"Skipping {config.name} because it is not in the integrations list")
+                        continue
                     mcp_servers = []
-                    if config.mcp_url:
+                    if config.name == "Apple Agent":
+                        try:
+                            server = await stack.enter_async_context(MCPServerStdio(
+                                name = f"{config.name} Server",
+                                params = {
+                                    "command": "bunx",
+                                    "args": ["@dhravya/apple-mcp@latest"]
+                                }
+                            ))
+                            mcp_servers = [server]
+                        except Exception as e:
+                            print(f"[Error][Invoke] Failed to enter context for {config.name} Server: {e}")
+                            raise  # Re-raise the exception for non-streaming case
+                    elif config.name == "Whatsapp Agent":
+                        try:
+                            server = await stack.enter_async_context(MCPServerStdio(
+                                name = f"{config.name} Server",
+                                params = {
+                                    "command": "/Users/penguin/Desktop/projects/mcp_ai_tests/aipa-python-server/.venv/bin/uv",
+                                    "args": [
+                                        "--directory",
+                                        "/Users/penguin/Desktop/projects/mcp_ai_tests/whatsapp-mcp/whatsapp-mcp-server",
+                                        "run",
+                                        "main.py"
+                                    ]
+                                }
+                            ))
+                            mcp_servers = [server]
+
+                        except Exception as e:
+                            print(f"[Error][Invoke] Failed to enter context for {config.name} Server: {e}")
+                            raise  # Re-raise the exception for non-streaming case
+                    elif config.mcp_url:
                         try:
                             server = await stack.enter_async_context(MCPServerSse(
                                 name=f"{config.name} Server",
@@ -64,6 +103,8 @@ class HierarchicalAgentRunner:
                         instructions=config.instructions,
                         mcp_servers=mcp_servers,
                         model_settings=config.model_settings,
+                        output_type=config.output_type,
+                        # model="o3-mini"
                     )
                     handoffObject = handoff(
                         agent = agent,
@@ -90,17 +131,19 @@ class HierarchicalAgentRunner:
                     mcp_servers=main_agent_mcp_servers,
                     handoffs=handoff_agents,
                     model_settings=self.main_agent_config.model_settings,
+                    # model="o3-mini"
                 )
 
                 # Run the workflow with the dynamically constructed main agent
                 result = await Runner.run(starting_agent=main_agent, input=messages)
+                pprint(result)
                 return result
 
 async def main():
     # 1. Define Configurations for all agents
     main_config = AgentConfig(
         name="Task Coordinator",
-        instructions="You are a helpful assistant. Determine if a task is for Gmail or Calendar and delegate.",
+        instructions="You are a helpful assistant. Determine if a task is for Gmail, Calendar, Slack, Whatsapp, or Notion and delegate.",
         # model_settings=ModelSettings(tool_choice=None) # Main agent might not need tools directly
         # mcp_url= Optional URL if the main agent needs its own tools
     )
@@ -109,6 +152,7 @@ async def main():
         name="Gmail Agent",
         instructions="You are a helpful assistant that can handle gmail tasks.",
         mcp_url="https://mcp.composio.dev/gmail/enough-miniature-terabyte-vtIXTm", # Replace with your actual URL
+        output_type=gmail_output
         # model_settings=ModelSettings(tool_choice="required") # Example
     )
 
