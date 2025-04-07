@@ -25,16 +25,16 @@ ist_time_str = current_time_ist.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 main_config = AgentConfig(
     name="Task Coordinator",
-    instructions=f"You are a helpful assistant. Current date and time in IST: {ist_time_str}. Determine if a task is for Gmail, Slack, Notion, Whatsapp or Calendar and delegate.",
+    instructions=f"You are Shiro, a highly efficient personal assistant. Current date and time in IST: {ist_time_str}. Carefully analyze each user request to determine if it requires Gmail, Slack, Notion, Whatsapp, or Calendar functionality. When appropriate, delegate to the specialized agent without hesitation.",
     # model_settings=ModelSettings(tool_choice=None) # Main agent might not need tools directly
 )
 
 gmail_config = AgentConfig(
     name="Gmail Agent",
-    instructions="You are a helpful assistant that can handle gmail tasks. 1) Before sending an email, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the email. 2) If the user would like to summarise their emails, fetch them according to the user's query and summarise them concisely before showing it to the user.",
+    instructions=f"You are a helpful assistant that can handle gmail tasks. Current date and time in IST: {ist_time_str}. 1) Before sending an email, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the email by calling the required tool. 2) If the user would like to summarise their emails, fetch them according to the user's query and summarise them concisely before showing it to the user.",
     mcp_url="https://mcp.composio.dev/gmail/enough-miniature-terabyte-vtIXTm",
     output_type=gmail_output,
-    # model_settings=ModelSettings(tool_choice="required")
+    model_settings=ModelSettings(tool_choice="required")
 )
 
 slack_config = AgentConfig(
@@ -42,14 +42,15 @@ slack_config = AgentConfig(
     instructions="You are a helpful assistant that can handle slack tasks. 1) Before sending a message, first create a draft, show it to the user and ask for confirmation. If the user confirms, send the message.",
     mcp_url="https://mcp.composio.dev/slack/enough-miniature-terabyte-vtIXTm",
     output_type=slack_output,
-    # model_settings=ModelSettings(tool_choice="required")
+    model_settings=ModelSettings(tool_choice="required")
 )
 
 calendar_config = AgentConfig(
     name="Calendar Agent",
-    instructions="You handle calendar scheduling and querying. Current date and time in IST: {ist_time_str}. All schedules should be in IST. 1) When asked to schedule an event, first confirm the date, time and attendees. If the user confirms, schedule the event.",
+    instructions=f"You handle calendar scheduling and querying. Current date and time in IST: {ist_time_str}. All schedules should be in IST. 1) When asked to schedule an event, first confirm the date, time and attendees. If the user confirms, schedule the event.",
     mcp_url="https://mcp.composio.dev/googlecalendar/enough-miniature-terabyte-vtIXTm",
     output_type=calendar_output,
+    model_settings=ModelSettings(tool_choice="required")
 )
 
 search_config = AgentConfig(
@@ -63,14 +64,14 @@ notion_config = AgentConfig(
     instructions="You can create, read, update and delete notes in Notion. Be concise in your responses.",
     mcp_url="https://mcp.composio.dev/notion/scruffy-huge-nest-ixAj3E",
     output_type=notion_output,
-)
+    model_settings=ModelSettings(tool_choice="required"))
 
 whatsapp_config = AgentConfig(
     name="Whatsapp Agent",
     instructions="You can send and receive messages from whatsapp.",
     # mcp_url="https://mcp.composio.dev/whatsapp/enough-miniature-terabyte-vtIXTm",
     output_type=whatsapp_output,
-)
+    model_settings=ModelSettings(tool_choice="required"))
 
 apple_config = AgentConfig(
     name="Apple Agent",
