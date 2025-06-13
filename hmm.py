@@ -6,6 +6,8 @@ import subprocess
 import time
 from typing import Any
 
+# i like pikachu
+
 from agents import Agent, Runner, gen_trace_id, trace
 from agents.mcp import MCPServer, MCPServerSse
 from agents.model_settings import ModelSettings
